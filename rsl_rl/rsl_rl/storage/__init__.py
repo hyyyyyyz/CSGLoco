@@ -1,10 +1,5 @@
-# Copyright (c) 2021-2026, ETH Zurich and NVIDIA CORPORATION
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
-
-"""Transitions storage for the learning algorithm."""
+#  Copyright 2021 ETH Zurich, NVIDIA CORPORATION
+#  SPDX-License-Identifier: BSD-3-Clause
 
 from .rollout_storage import RolloutStorage
-
-__all__ = ["RolloutStorage"]
+from .him_rollout_storage import HIMRolloutStorage
