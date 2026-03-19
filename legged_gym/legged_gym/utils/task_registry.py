@@ -90,6 +90,10 @@ class TaskRegistry():
             env_cfg, _ = self.get_cfgs(name)
         # override cfg from args (if specified)
         env_cfg, _ = update_cfg_from_args(env_cfg, None, args)
+        # Fix: apply seed from CLI args directly to env_cfg (update_cfg_from_args
+        # only sets cfg_train.seed, but cfg_train is None here)
+        if hasattr(args, "seed") and args.seed is not None:
+            env_cfg.seed = args.seed
         set_seed(env_cfg.seed)
         # parse sim params (convert to dict first)
         sim_params = {"sim": class_to_dict(env_cfg.sim)}

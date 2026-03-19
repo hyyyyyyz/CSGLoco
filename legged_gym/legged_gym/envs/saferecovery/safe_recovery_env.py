@@ -92,6 +92,7 @@ class SafeRecoveryEnv(LeggedRobot):
             contact_force_violation=self.contact_force_violation,
             orientation_violation=self.orientation_violation,
             is_fallen=self.is_fallen,
+            recovery_phase=self.recovery_phase,
         )
         self._safety_check_count += 1
 

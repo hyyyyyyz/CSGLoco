@@ -31,6 +31,9 @@ def evaluate_single(task_name, load_run, num_eval_steps=5000, num_envs=64,
         env_cfg.perturbation.force_range = force_range
     env_cfg.perturbation.interval_range = [2.0, 5.0]
 
+    # FAIR EVALUATION: disable CaT constraint termination for all methods
+    env_cfg.safety.enable_constraint_termination = False
+
     env, _ = task_registry.make_env(name=task_name, args=args, env_cfg=env_cfg)
     obs = env.get_observations()
 
@@ -121,6 +124,10 @@ def main():
         "recovery/mean_time_to_upright",
         "coupling/violations_during_recovery",
         "coupling/violations_per_fall",
+        "coupling/viol_per_fallen_sec",
+        "coupling/viol_per_active_rec_sec",
+        "coupling/pct_attempts_with_violation",
+        "coupling/pct_success_with_violation",
     ]
 
     all_results = {}

@@ -1,4 +1,4 @@
-"""Safety Logger v3 — tracks distinct violation events and phase breakdown."""
+"""Safety Logger v4 — fixes coupling metric to distinguish fallen vs active recovery."""
 
 import torch
 
@@ -33,19 +33,34 @@ class SafetyLogger:
         self.recovery_success_count = 0
         self.recovery_failure_count = 0
         self.recovery_times = []
-        self.violations_during_fall = 0
-        self.total_fallen_steps = 0
-        self._recovery_had_violation = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-        self.recoveries_with_violation = 0
 
-        # Violation breakdown by type during recovery
-        self.torque_viol_during_recovery = 0
-        self.contact_viol_during_recovery = 0
-        self.orient_viol_during_recovery = 0
+        # --- Coupling: during ANY fallen state ---
+        self.violations_during_fallen = 0
+        self.total_fallen_steps = 0
+        self.torque_viol_during_fallen = 0
+        self.contact_viol_during_fallen = 0
+        self.orient_viol_during_fallen = 0
+
+        # --- Coupling: during ACTIVE recovery only (phase > 0) ---
+        self.violations_during_active_recovery = 0
+        self.active_recovery_steps = 0
+        self.torque_viol_during_active_rec = 0
+        self.contact_viol_during_active_rec = 0
+        self.orient_viol_during_active_rec = 0
+
+        # Per-attempt violation tracking
+        self._recovery_had_violation = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        self._recovery_had_hazardous_viol = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        self.recoveries_with_violation = 0
+        self.recoveries_with_hazardous_viol = 0
+        # Track for successful vs all attempts separately
+        self.successful_with_violation = 0
+        self.successful_with_hazardous_viol = 0
 
         self._prev_is_fallen = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
-    def log_step(self, torque_violation, contact_force_violation, orientation_violation, is_fallen):
+    def log_step(self, torque_violation, contact_force_violation, orientation_violation,
+                 is_fallen, recovery_phase=None):
         self.total_steps += 1
 
         self.torque_violation_count += torque_violation.sum().item()
@@ -72,19 +87,31 @@ class SafetyLogger:
         new_falls = (~self._prev_is_fallen) & is_fallen
         self.fall_count += new_falls.sum().item()
 
-        # Coupling
         any_violation = torque_violation | contact_force_violation | orientation_violation
-        fallen_and_violating = any_violation & is_fallen
-        self.violations_during_fall += fallen_and_violating.sum().item()
-        self.total_fallen_steps += is_fallen.sum().item()
+        hazardous_violation = torque_violation  # torque is the primary hazardous type
 
-        # Coupling by type
-        self.torque_viol_during_recovery += (torque_violation & is_fallen).sum().item()
-        self.contact_viol_during_recovery += (contact_force_violation & is_fallen).sum().item()
-        self.orient_viol_during_recovery += (orientation_violation & is_fallen).sum().item()
+        # --- Coupling: during fallen state ---
+        fallen_mask = is_fallen
+        self.total_fallen_steps += fallen_mask.sum().item()
+        self.violations_during_fallen += (any_violation & fallen_mask).sum().item()
+        self.torque_viol_during_fallen += (torque_violation & fallen_mask).sum().item()
+        self.contact_viol_during_fallen += (contact_force_violation & fallen_mask).sum().item()
+        self.orient_viol_during_fallen += (orientation_violation & fallen_mask).sum().item()
 
-        self._recovery_had_violation |= (any_violation & is_fallen)
+        # --- Coupling: during active recovery (phase > 0) ---
+        if recovery_phase is not None:
+            active_rec = fallen_mask & (recovery_phase > 0)
+            self.active_recovery_steps += active_rec.sum().item()
+            self.violations_during_active_recovery += (any_violation & active_rec).sum().item()
+            self.torque_viol_during_active_rec += (torque_violation & active_rec).sum().item()
+            self.contact_viol_during_active_rec += (contact_force_violation & active_rec).sum().item()
+            self.orient_viol_during_active_rec += (orientation_violation & active_rec).sum().item()
+
+        # Per-attempt violation tracking (reset on new falls)
+        self._recovery_had_violation |= (any_violation & fallen_mask)
+        self._recovery_had_hazardous_viol |= (hazardous_violation & fallen_mask)
         self._recovery_had_violation[new_falls] = False
+        self._recovery_had_hazardous_viol[new_falls] = False
 
         self._prev_is_fallen = is_fallen.clone()
 
@@ -92,25 +119,34 @@ class SafetyLogger:
         n = recovered_mask.sum().item()
         self.recovery_success_count += n
         self.recovery_times.extend(recovery_times.cpu().tolist())
+        self.successful_with_violation += self._recovery_had_violation[recovered_mask].sum().item()
+        self.successful_with_hazardous_viol += self._recovery_had_hazardous_viol[recovered_mask].sum().item()
         self.recoveries_with_violation += self._recovery_had_violation[recovered_mask].sum().item()
+        self.recoveries_with_hazardous_viol += self._recovery_had_hazardous_viol[recovered_mask].sum().item()
         self._recovery_had_violation[recovered_mask] = False
+        self._recovery_had_hazardous_viol[recovered_mask] = False
 
     def log_recovery_failure(self, timed_out_mask):
         self.recovery_failure_count += timed_out_mask.sum().item()
         self.recoveries_with_violation += self._recovery_had_violation[timed_out_mask].sum().item()
+        self.recoveries_with_hazardous_viol += self._recovery_had_hazardous_viol[timed_out_mask].sum().item()
         self._recovery_had_violation[timed_out_mask] = False
+        self._recovery_had_hazardous_viol[timed_out_mask] = False
 
     def summarize(self):
         total_env_steps = max(self.total_steps * self.num_envs, 1)
         total_falls = max(self.fall_count, 1)
-        total_recovery_attempts = max(self.recovery_success_count + self.recovery_failure_count, 1)
+        total_attempts = self.recovery_success_count + self.recovery_failure_count
+        total_attempts_denom = max(total_attempts, 1)
+        success_denom = max(self.recovery_success_count, 1)
         mean_recovery_time = (
             sum(self.recovery_times) / len(self.recovery_times)
             if self.recovery_times else float("nan")
         )
-        total_fallen_seconds = max(self.total_fallen_steps * 0.02, 0.001)
-        viol_per_recovery_sec = self.violations_during_fall / total_fallen_seconds
-        pct_recovery_with_viol = self.recoveries_with_violation / total_recovery_attempts
+
+        # Coupling denominators
+        total_fallen_sec = max(self.total_fallen_steps * 0.02, 0.001)
+        active_rec_sec = max(self.active_recovery_steps * 0.02, 0.001)
 
         return {
             # Axis 2: Safety — per-step rates
@@ -125,23 +161,40 @@ class SafetyLogger:
             "safety/contact_events": self.contact_event_count,
             "safety/orient_events": self.orient_event_count,
             "safety/total_events": self.torque_event_count + self.contact_event_count + self.orient_event_count,
-            # Axis 2: Safety — occupancy (fraction of env-steps in violation)
+            # Axis 2: Safety — occupancy
             "safety/torque_occupancy": self.torque_occupancy_steps / total_env_steps,
             "safety/contact_occupancy": self.contact_occupancy_steps / total_env_steps,
             "safety/orient_occupancy": self.orient_occupancy_steps / total_env_steps,
             # Axis 3: Recovery
             "recovery/fall_count": self.fall_count,
-            "recovery/success_rate": self.recovery_success_count / total_recovery_attempts,
+            "recovery/success_rate": self.recovery_success_count / total_attempts_denom,
             "recovery/mean_time_to_upright": mean_recovery_time,
             "recovery/timeout_count": self.recovery_failure_count,
-            "recovery/total_attempts": self.recovery_success_count + self.recovery_failure_count,
-            # Axis 4: Coupling — aggregate
-            "coupling/violations_during_recovery": self.violations_during_fall,
-            "coupling/violations_per_fall": self.violations_during_fall / total_falls,
-            "coupling/violations_per_recovery_sec": viol_per_recovery_sec,
-            "coupling/pct_recovery_with_violation": pct_recovery_with_viol,
-            # Axis 4: Coupling — by type during recovery
-            "coupling/torque_viol_during_recovery": self.torque_viol_during_recovery,
-            "coupling/contact_viol_during_recovery": self.contact_viol_during_recovery,
-            "coupling/orient_viol_during_recovery": self.orient_viol_during_recovery,
+            "recovery/total_attempts": total_attempts,
+            # Axis 4: Coupling (during fallen state — backward compatible)
+            "coupling/violations_during_fallen": self.violations_during_fallen,
+            "coupling/violations_per_fall": self.violations_during_fallen / total_falls,
+            "coupling/viol_per_fallen_sec": self.violations_during_fallen / total_fallen_sec if self.total_fallen_steps > 0 else 0,
+            # Axis 4: Coupling (during active recovery — NEW, correct metric)
+            "coupling/viol_during_active_recovery": self.violations_during_active_recovery,
+            "coupling/active_recovery_steps": self.active_recovery_steps,
+            "coupling/viol_per_active_rec_sec": self.violations_during_active_recovery / active_rec_sec if self.active_recovery_steps > 0 else 0,
+            # Axis 4: Per-type during fallen
+            "coupling/torque_per_fallen_sec": self.torque_viol_during_fallen / total_fallen_sec if self.total_fallen_steps > 0 else 0,
+            "coupling/contact_per_fallen_sec": self.contact_viol_during_fallen / total_fallen_sec if self.total_fallen_steps > 0 else 0,
+            "coupling/orient_per_fallen_sec": self.orient_viol_during_fallen / total_fallen_sec if self.total_fallen_steps > 0 else 0,
+            # Axis 4: Per-type during active recovery
+            "coupling/torque_per_active_rec_sec": self.torque_viol_during_active_rec / active_rec_sec if self.active_recovery_steps > 0 else 0,
+            "coupling/contact_per_active_rec_sec": self.contact_viol_during_active_rec / active_rec_sec if self.active_recovery_steps > 0 else 0,
+            "coupling/orient_per_active_rec_sec": self.orient_viol_during_active_rec / active_rec_sec if self.active_recovery_steps > 0 else 0,
+            # Axis 4: Per-attempt violation fractions
+            "coupling/pct_attempts_with_violation": self.recoveries_with_violation / total_attempts_denom,
+            "coupling/pct_attempts_with_hazardous": self.recoveries_with_hazardous_viol / total_attempts_denom,
+            "coupling/pct_success_with_violation": self.successful_with_violation / success_denom if self.recovery_success_count > 0 else 0,
+            "coupling/pct_success_with_hazardous": self.successful_with_hazardous_viol / success_denom if self.recovery_success_count > 0 else 0,
+            # Raw denominators for transparency
+            "raw/total_fallen_steps": self.total_fallen_steps,
+            "raw/active_recovery_steps": self.active_recovery_steps,
+            "raw/total_fallen_sec": self.total_fallen_steps * 0.02,
+            "raw/active_recovery_sec": self.active_recovery_steps * 0.02,
         }
