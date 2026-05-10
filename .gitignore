@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.pytest_cache/
+
+# Build / venv
+build/
+dist/
+.venv/
+venv/
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs and checkpoints (large, don't ship them)
+logs/
+runs/
+wandb/
+*.pt
+*.pth
+
+# Local experimental outputs that shouldn't pollute the repo
+*.log

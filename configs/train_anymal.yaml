@@ -1,0 +1,20 @@
+# Default training configuration for ANYmal-C cross-morphology baselines.
+robot: anymal_c
+simulator: isaac_gym
+parallel_envs: 4096
+control_frequency_hz: 50
+
+baselines:
+  vanilla:   { task: safe_recovery_anymal,         max_iterations: 1500 }
+  cat:       { task: safe_recovery_anymal_cat,     max_iterations: 1500 }
+  recovery:  { task: safe_recovery_anymal_fallen,  max_iterations: 2000 }
+
+# PPO hyperparameters identical to A1.
+ppo:
+  network_hidden: [512, 256, 128]
+  learning_rate: 1.0e-3
+  batch_size: 24576
+  gae_lambda: 0.95
+  gamma: 0.99
+  clip_range: 0.2
+  entropy_coef: 0.01

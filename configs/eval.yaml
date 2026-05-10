@@ -1,0 +1,32 @@
+# Default evaluation configuration.
+common_rollout: true               # disable method-specific termination during eval
+num_envs: 128
+num_eval_steps: 10000
+
+perturbation_bands:
+  low:    { force_range: [30, 60] }
+  medium: { force_range: [80, 150] }      # default
+  high:   { force_range: [150, 250] }
+  rough:  { force_range: [100, 250] }     # used together with friction/noise DR
+
+settings:
+  standard: { force_range: medium, fallen_start: false, native_termination: false }
+  fallen:   { force_range: medium, fallen_start: true,  native_termination: false }
+  native:   { force_range: medium, fallen_start: false, native_termination: true  }
+  rough:    { force_range: rough,  fallen_start: false, native_termination: false }
+
+thresholds:
+  a1:
+    torque_limit_nm: 33.5
+    fall_height_m: 0.20
+    recovery_height_m: 0.22
+    recovery_tilt_rad: 0.6
+    return_to_task_err_mps: 0.5
+    startup_grace_s: 0.5
+  anymal_c:
+    torque_limit_nm: 40.0
+    fall_height_m: 0.25
+    recovery_height_m: 0.27
+    recovery_tilt_rad: 0.5
+    return_to_task_err_mps: 0.5
+    startup_grace_s: 0.5

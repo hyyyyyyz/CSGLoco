@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "saferecovery"
+version = "1.0.0"
+description = "A four-axis evaluation benchmark for quadruped locomotion and fall recovery."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+authors = [
+    { name = "Yaozeng Huang" },
+    { name = "Ziyi Zhang" },
+    { name = "Shuhao Jiang" },
+    { name = "Jingjie Li" },
+    { name = "Yifan Wang" },
+    { name = "Yanyun Zhou" },
+    { name = "Fei Shi" },
+]
+keywords = ["quadruped", "locomotion", "safe-rl", "fall-recovery", "benchmark"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "numpy>=1.21",
+    "torch>=1.10",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/hyyyyyyz/SafeRecovery"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["saferecovery*"]
+exclude = ["third_party*", "results*", "scripts*", "configs*", "docs*"]

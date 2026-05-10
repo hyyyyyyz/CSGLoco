@@ -1,0 +1,8 @@
+# Runtime dependencies. Install Isaac Gym Preview 4 separately (see docs/REPRODUCE.md).
+numpy>=1.21
+torch>=1.10
+pyyaml>=6.0
+
+# legged_gym and rsl_rl are vendored under third_party/ — install with
+#   pip install -e third_party/legged_gym
+#   pip install -e third_party/rsl_rl

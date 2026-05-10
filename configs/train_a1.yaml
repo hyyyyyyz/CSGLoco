@@ -1,0 +1,30 @@
+# Default training configuration for Unitree A1 baselines.
+# These are reference values; the canonical configuration lives in
+# third_party/legged_gym/legged_gym/envs/saferecovery/safe_recovery_config.py.
+
+robot: a1
+simulator: isaac_gym
+parallel_envs: 4096
+control_frequency_hz: 50
+
+baselines:
+  vanilla:   { task: safe_recovery_a1,         max_iterations: 1500 }
+  cat:       { task: safe_recovery_a1_cat,     max_iterations: 1500 }
+  recovery:  { task: safe_recovery_a1_fallen,  max_iterations: 2000 }
+
+# PPO hyperparameters (shared across vanilla / cat / recovery)
+ppo:
+  network_hidden: [512, 256, 128]
+  learning_rate: 1.0e-3
+  batch_size: 24576
+  gae_lambda: 0.95
+  gamma: 0.99
+  clip_range: 0.2
+  entropy_coef: 0.01
+
+# Reward terms shared by vanilla and cat; recovery adds an upright bonus.
+reward_terms:
+  velocity_tracking: 1.0
+  torque_penalty: 1.0e-4
+  joint_limit_penalty: 0.01
+  upright_bonus_recovery_only: 1.0   # active when base height > 0.22 m and tilt < 0.6 rad
